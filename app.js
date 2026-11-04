@@ -4,28 +4,6 @@ const DIRECTIONS = [
   { name: 'Sur', dx: 0, dy: 1 },
   { name: 'Oeste', dx: -1, dy: 0 },
 ];
-const CONDITIONS = [
-  ['frontFree', 'camino al frente libre'], ['frontBlocked', 'frente bloqueado'],
-  ['leftFree', 'camino a la izquierda libre'], ['leftBlocked', 'izquierda bloqueada'],
-  ['rightFree', 'camino a la derecha libre'], ['rightBlocked', 'derecha bloqueada'],
-  ['markerHere', 'hay un marcador aquí'], ['noMarkerHere', 'no hay marcador aquí'],
-  ['bagHas', 'hay marcadores en la mochila'], ['bagEmpty', 'mochila vacía'],
-  ['north', 'mira al norte'], ['notNorth', 'no mira al norte'],
-  ['south', 'mira al sur'], ['notSouth', 'no mira al sur'],
-  ['east', 'mira al este'], ['notEast', 'no mira al este'],
-  ['west', 'mira al oeste'], ['notWest', 'no mira al oeste'],
-];
-const BLOCKS = {
-  move: { label: 'Avanzar', icon: '↑', bg: '#eaf1ff', ink: '#4569b4' },
-  left: { label: 'Girar a la izquierda', icon: '↶', bg: '#f1edfc', ink: '#7661ac' },
-  right: { label: 'Girar a la derecha', icon: '↷', bg: '#f1edfc', ink: '#7661ac' },
-  pick: { label: 'Recoger marcador', icon: '●', bg: '#e7f5f0', ink: '#36816b' },
-  drop: { label: 'Colocar marcador', icon: '◉', bg: '#e7f5f0', ink: '#36816b' },
-  repeat: { label: 'Repetir', icon: '⟳', bg: '#fff3dc', ink: '#aa7827' },
-  while: { label: 'Mientras', icon: '↻', bg: '#fff0e7', ink: '#b36a3c' },
-  if: { label: 'Si / si no', icon: '◇', bg: '#e9f4e8', ink: '#548750' },
-};
-
 function makeLevel(name, width, height, start, goal, description, markers = {}, targets = {}, walls = []) {
   const wallSet = new Set();
   const opposite = { N: 'S', E: 'W', S: 'N', W: 'E' };
@@ -50,12 +28,10 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const boardEl = $('#board');
 const programEl = $('#program-list');
 const state = {
-  levelIndex: 0, world: null, program: [], scope: [], selectedId: null,
-  undo: [], redo: [], id: 0, iterator: null, running: false, paused: false,
-  activeId: null, actions: 0, timer: null, completedLevels: new Set(),
+  levelIndex: 0, world: null, workspace: null, variables: new Map(), savedPrograms: new Map(),
+  iterator: null, running: false, paused: false, activeId: null,
+  timer: null, completedLevels: new Set(),
 };
-const clone = value => JSON.parse(JSON.stringify(value));
-const directionIndex = name => DIRECTIONS.findIndex(direction => direction.name === name);
 const currentLevel = () => levels[state.levelIndex];
 const keyAt = (x, y) => `${x},${y}`;
 const keyWall = (x, y, d) => `${x},${y},${d}`;
@@ -110,7 +86,9 @@ function setTransport() {
   $('#run-label').textContent = state.running ? (state.paused ? 'Continuar programa' : 'Ejecutando…') : 'Ejecutar programa';
   $('#run-button').querySelector('.run-glyph').textContent = state.running && !state.paused ? 'Ⅱ' : '▶';
   $('#run-button').setAttribute('aria-label', state.running ? (state.paused ? 'Continuar programa' : 'Pausar programa') : 'Ejecutar programa');
-  renderHistory();
+  $('#undo-button').disabled = !state.workspace || state.running;
+  $('#redo-button').disabled = !state.workspace || state.running;
+  state.workspace?.getAllBlocks(false).forEach(block => block.setMovable(!state.running));
 }
 function setWorld() {
   const level = currentLevel();
@@ -164,101 +142,98 @@ function renderWorld() {
   $('#bag-count').textContent = String(state.world.bag).padStart(2, '0');
   $('#action-count').textContent = String(state.world.actions).padStart(2, '0');
 }
-function conditionOptions(selected) {
-  return CONDITIONS.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
-}
-function blockControl(block) {
-  if (block.type === 'repeat') return `<label class="sr-only" for="count-${block.id}">Cantidad de repeticiones</label><input id="count-${block.id}" data-edit="times" data-id="${block.id}" type="number" min="1" max="99" value="${block.times}" title="Veces que se repite" />`;
-  if (block.type === 'while' || block.type === 'if') return `<label class="sr-only" for="condition-${block.id}">Condición</label><select id="condition-${block.id}" data-edit="condition" data-id="${block.id}" title="Elegir condición">${conditionOptions(block.condition)}</select>`;
-  return '';
-}
-function renderList(list, depth = 0, branch = 'root') {
-  if (depth === 0 && list.length === 0) {
-    return '<div class="empty-program"><span class="empty-icon">⌘</span><strong>Tu lienzo está listo</strong><span>Elige un bloque de arriba para empezar a programar a Karel.</span></div>';
+function registerKarelBlocks() {
+  Blockly.Blocks.karel_move = { init() {
+    this.appendValueInput('STEPS').setCheck('Number').appendField('avanzar');
+    this.appendDummyInput().appendField('casillas');
+    this.setPreviousStatement(true); this.setNextStatement(true); this.setColour('#4c97ff');
+  } };
+  Blockly.Blocks.karel_turn = { init() {
+    this.appendDummyInput().appendField('girar').appendField(new Blockly.FieldDropdown([['a la izquierda', 'LEFT'], ['a la derecha', 'RIGHT']]), 'DIRECTION');
+    this.setPreviousStatement(true); this.setNextStatement(true); this.setColour('#4c97ff');
+  } };
+  for (const [type, label, colour] of [['karel_pick', 'recoger marcador', '#0fbd8c'], ['karel_drop', 'colocar marcador', '#0fbd8c']]) {
+    Blockly.Blocks[type] = { init() { this.appendDummyInput().appendField(label); this.setPreviousStatement(true); this.setNextStatement(true); this.setColour(colour); } };
   }
-  let html = '';
-  list.forEach((block, index) => {
-    const meta = BLOCKS[block.type];
-    const classes = ['block-row'];
-    if (state.selectedId === block.id) classes.push('selected');
-    if (state.activeId === block.id) classes.push('is-active');
-    html += `<article class="${classes.join(' ')}" data-id="${block.id}" style="--block-bg:${meta.bg};--block-ink:${meta.ink}"><div class="block-main"><span class="block-type-icon">${meta.icon}</span><span class="block-title">${meta.label}</span>${blockControl(block)}<span class="block-controls"><button data-action="up" data-id="${block.id}" title="Subir" aria-label="Subir bloque" ${index === 0 ? 'disabled' : ''}>↑</button><button data-action="down" data-id="${block.id}" title="Bajar" aria-label="Bajar bloque" ${index === list.length - 1 ? 'disabled' : ''}>↓</button><button data-action="delete" data-id="${block.id}" title="Eliminar" aria-label="Eliminar bloque">×</button></span></div>`;
-    if (['repeat', 'while', 'if'].includes(block.type)) {
-      const childLabel = block.type === 'if' ? 'SI SE CUMPLE' : 'CUERPO';
-      const childScope = [...state.scope, { id: block.id, branch: 'children' }];
-      html += `<div class="block-indent"><span class="branch-label">${childLabel}</span>${renderList(block.children, depth + 1, 'children')}<button class="branch-add" data-enter="${block.id}" data-branch="children">＋ Añadir dentro</button>`;
-      if (block.type === 'if') {
-        html += `<span class="branch-label else-label">SI NO SE CUMPLE</span>${renderList(block.elseChildren, depth + 1, 'else')}<button class="branch-add" data-enter="${block.id}" data-branch="else">＋ Añadir alternativa</button>`;
-      }
-      html += '</div>';
-    }
-    html += '</article>';
-    if (index < list.length - 1) html += '<div class="insert-gap" aria-hidden="true"></div>';
+  Blockly.Blocks.karel_path = { init() {
+    this.appendDummyInput().appendField('¿camino').appendField(new Blockly.FieldDropdown([['al frente', 'FRONT'], ['a la izquierda', 'LEFT'], ['a la derecha', 'RIGHT']]), 'DIRECTION').appendField(new Blockly.FieldDropdown([['libre?', 'FREE'], ['bloqueado?', 'BLOCKED']]), 'STATE');
+    this.setOutput(true, 'Boolean'); this.setColour('#5cb1d6');
+  } };
+  Blockly.Blocks.karel_marker_here = { init() { this.appendDummyInput().appendField('¿hay marcador aquí?'); this.setOutput(true, 'Boolean'); this.setColour('#5cb1d6'); } };
+  Blockly.Blocks.karel_bag_empty = { init() { this.appendDummyInput().appendField('¿mochila vacía?'); this.setOutput(true, 'Boolean'); this.setColour('#5cb1d6'); } };
+  Blockly.Blocks.karel_facing = { init() {
+    this.appendDummyInput().appendField('¿mira al').appendField(new Blockly.FieldDropdown([['norte', '0'], ['este', '1'], ['sur', '2'], ['oeste', '3']]), 'DIRECTION');
+    this.setOutput(true, 'Boolean'); this.setColour('#5cb1d6');
+  } };
+  Blockly.Blocks.karel_marker_count = { init() { this.appendDummyInput().appendField('marcadores aquí'); this.setOutput(true, 'Number'); this.setColour('#5cb1d6'); } };
+  Blockly.Blocks.karel_bag_count = { init() { this.appendDummyInput().appendField('marcadores en mochila'); this.setOutput(true, 'Number'); this.setColour('#5cb1d6'); } };
+  Blockly.Blocks.karel_at_goal = { init() { this.appendDummyInput().appendField('¿en la meta?'); this.setOutput(true, 'Boolean'); this.setColour('#5cb1d6'); } };
+}
+function makeToolbox() {
+  const toolbox = `<xml xmlns="https://developers.google.com/blockly/xml">
+    <category name="Movimiento" colour="#4c97ff"><block type="karel_move"><value name="STEPS"><shadow type="math_number"><field name="NUM">1</field></shadow></value></block><block type="karel_turn"></block></category>
+    <category name="Marcadores" colour="#0fbd8c"><block type="karel_pick"></block><block type="karel_drop"></block></category>
+    <category name="Control" categorystyle="loop_category"><block type="controls_repeat_ext"><value name="TIMES"><shadow type="math_number"><field name="NUM">4</field></shadow></value></block><block type="controls_whileUntil"></block><block type="controls_if"></block><block type="controls_for"></block></category>
+    <category name="Sensores" colour="#5cb1d6"><block type="karel_path"></block><block type="karel_marker_here"></block><block type="karel_bag_empty"></block><block type="karel_facing"></block><block type="karel_marker_count"></block><block type="karel_bag_count"></block><block type="karel_at_goal"></block></category>
+    <category name="Operadores" categorystyle="logic_category"><block type="logic_compare"></block><block type="logic_operation"></block><block type="logic_negate"></block><block type="logic_boolean"></block><block type="math_number"></block><block type="math_arithmetic"></block><block type="math_single"></block><block type="math_modulo"></block><block type="math_random_int"></block><block type="text"></block><block type="text_join"></block><block type="text_length"></block></category>
+    <category name="Variables" custom="VARIABLE" categorystyle="variable_category"></category>
+  </xml>`;
+  return new DOMParser().parseFromString(toolbox, 'text/xml').documentElement;
+}
+function updateWorkspaceUI() {
+  const workspace = state.workspace;
+  if (!workspace) return;
+  $('#block-count').textContent = workspace.getAllBlocks(false).filter(block => !block.isShadow()).length;
+  $('#undo-button').disabled = state.running || !workspace.undoStack_.length;
+  $('#redo-button').disabled = state.running || !workspace.redoStack_.length;
+}
+function initializeWorkspace() {
+  registerKarelBlocks();
+  const theme = Blockly.Theme.defineTheme('karelScratch', {
+    base: Blockly.Themes.Zelos,
+    componentStyles: {
+      workspaceBackgroundColour: '#fbfcfa', toolboxBackgroundColour: '#ffffff', toolboxForegroundColour: '#34433b',
+      flyoutBackgroundColour: '#f4f7f3', flyoutForegroundColour: '#34433b', flyoutOpacity: 1,
+      scrollbarColour: '#cdd8d0', scrollbarOpacity: 0.65, insertionMarkerColour: '#263b32', insertionMarkerOpacity: 0.18,
+      markerColour: '#e8694d', cursorColour: '#263b32',
+    },
+    fontStyle: { family: 'DM Sans, sans-serif', weight: '600', size: 12 },
   });
-  return html;
+  state.workspace = Blockly.inject(programEl, {
+    toolbox: makeToolbox(), renderer: 'zelos', theme, toolboxPosition: 'start',
+    trashcan: true, sounds: false, oneBasedIndex: false,
+    grid: { spacing: 24, length: 2, colour: '#e2e8e2', snap: true },
+    zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 1.5, minScale: 0.5, scaleSpeed: 1.1 },
+    move: { scrollbars: true, drag: true, wheel: true },
+  });
+  const toolbox = state.workspace.getToolbox();
+  if (toolbox && !toolbox.getSelectedItem()) toolbox.setSelectedItem(toolbox.getToolboxItems()[0]);
+  state.workspace.addChangeListener(event => {
+    if (!event.isUiEvent) updateWorkspaceUI();
+  });
+  updateWorkspaceUI();
 }
-function renderScope() {
-  const crumb = $('#scope-crumb');
-  const parts = [{ label: 'PROGRAMA', scope: [] }];
-  let current = state.program;
-  for (const step of state.scope) {
-    const block = current.find(item => item.id === step.id);
-    if (!block) break;
-    const branchName = step.branch === 'else' ? 'SI NO' : block.type === 'if' ? 'SI' : 'CUERPO';
-    parts.push({ label: `${BLOCKS[block.type].label} · ${branchName}`, scope: [...parts.at(-1).scope, step] });
-    current = step.branch === 'else' ? block.elseChildren : block.children;
-  }
-  crumb.innerHTML = parts.map((part, index) => `<button class="crumb-button ${index === parts.length - 1 ? 'active' : ''}" data-scope-index="${index}">${part.label}</button>`).join('');
-  programEl.innerHTML = renderList(listAtScope());
-  $('#block-count').textContent = totalBlocks();
-  programEl.scrollTop = programEl.scrollHeight;
-}
-function renderAll() { renderScope(); renderWorld(); renderHistory(); setTransport(); }
-function createBlock(type) {
-  return { id: `block-${++state.id}`, type, times: 3, condition: 'frontFree', children: [], elseChildren: [] };
-}
-function addBlock(type) {
-  if (state.running) return;
-  saveHistory();
-  const block = createBlock(type);
-  listAtScope().push(block);
-  state.selectedId = block.id;
-  renderScope();
-  setHint(`${BLOCKS[type].label} añadido al programa`);
-}
-function updateProgram(change) {
-  if (state.running) return;
-  saveHistory(); change(); renderAll();
-}
-function moveBlock(id, offset) {
-  const found = findBlock(id); if (!found) return;
-  const index = found.list.indexOf(found.block); const target = index + offset;
-  if (target < 0 || target >= found.list.length) return;
-  updateProgram(() => { found.list.splice(index, 1); found.list.splice(target, 0, found.block); state.selectedId = id; });
-}
-function deleteBlock(id) {
-  const found = findBlock(id); if (!found) return;
-  updateProgram(() => { found.list.splice(found.list.indexOf(found.block), 1); state.selectedId = null; state.scope = []; });
-}
-function isPathAvailable(scope) {
-  let list = state.program;
-  for (const step of scope) {
-    const parent = list.find(block => block.id === step.id);
-    if (!parent) return false;
-    list = step.branch === 'else' ? parent.elseChildren : parent.children;
-  }
-  return true;
+function initializeLevelSelector() {
+  $('#level-select').innerHTML = levels.map((level, index) => `<option value="${index}">${String(index + 1).padStart(2, '0')} · ${level.name}</option>`).join('');
 }
 function startLevel(index) {
   stopExecution(false);
+  if (state.workspace) {
+    state.savedPrograms.set(state.levelIndex, Blockly.serialization.workspaces.save(state.workspace));
+    state.workspace.clear();
+    state.workspace.clearUndo();
+  }
   state.levelIndex = index;
   state.world = newWorld();
-  state.program = []; state.scope = []; state.selectedId = null; state.undo = []; state.redo = [];
+  state.variables = new Map();
+  const savedProgram = state.savedPrograms.get(index);
+  if (savedProgram) Blockly.serialization.workspaces.load(savedProgram, state.workspace);
+  state.workspace.clearUndo();
   $('#level-select').value = String(index);
   $('#progress-label').textContent = `${state.completedLevels.size} / ${levels.length} niveles`;
   announce(index === 0 ? '¡Tu próximo reto empieza aquí!' : `Nivel ${index} listo. ¡A programar!`);
-  setHint('Añade bloques y dale vida a Karel');
-  setWorld(); renderAll();
+  setHint('Arrastra bloques al espacio y únelos');
+  setWorld(); updateWorkspaceUI(); renderWorld();
 }
 function freeIn(direction) {
   const level = currentLevel(); const delta = DIRECTIONS[direction];
@@ -266,45 +241,112 @@ function freeIn(direction) {
   const walls = { 0: 'N', 1: 'E', 2: 'S', 3: 'W' };
   return nx >= 0 && ny >= 0 && nx < level.width && ny < level.height && !level.walls.has(keyWall(state.world.x, state.world.y, walls[direction]));
 }
-function conditionIsTrue(condition) {
-  const world = state.world; const left = (world.dir + 3) % 4; const right = (world.dir + 1) % 4;
-  const present = (world.markers[keyAt(world.x, world.y)] || 0) > 0;
-  const checks = {
-    frontFree: freeIn(world.dir), frontBlocked: !freeIn(world.dir), leftFree: freeIn(left), leftBlocked: !freeIn(left),
-    rightFree: freeIn(right), rightBlocked: !freeIn(right), markerHere: present, noMarkerHere: !present,
-    bagHas: world.bag > 0, bagEmpty: world.bag === 0,
-    north: world.dir === 0, notNorth: world.dir !== 0, east: world.dir === 1, notEast: world.dir !== 1,
-    south: world.dir === 2, notSouth: world.dir !== 2, west: world.dir === 3, notWest: world.dir !== 3,
-  };
-  return checks[condition];
-}
 function worldSignature() {
-  return JSON.stringify([state.world.x, state.world.y, state.world.dir, state.world.bag, state.world.markers]);
+  return JSON.stringify([state.world.x, state.world.y, state.world.dir, state.world.bag, state.world.markers, [...state.variables]]);
 }
-function containsAction(blocks) { return blocks.some(block => ['move', 'left', 'right', 'pick', 'drop'].includes(block.type) || containsAction(block.children) || containsAction(block.elseChildren)); }
-function* execute(blocks) {
-  for (const block of blocks) {
-    if (block.type === 'repeat') {
-      for (let i = 0; i < block.times; i++) yield* execute(block.children);
-    } else if (block.type === 'while') {
-      while (conditionIsTrue(block.condition)) {
-        if (!containsAction(block.children)) throw new Error('El bloque «Mientras» necesita una acción para poder avanzar.');
-        const before = worldSignature();
-        yield { id: block.id, message: `Se cumple «${conditionLabel(block.condition)}»` };
-        yield* execute(block.children);
-        if (before === worldSignature() && conditionIsTrue(block.condition)) throw new Error('El bucle no cambia el mundo y su condición sigue siendo verdadera.');
-      }
-      yield { id: block.id, message: 'La condición ya no se cumple. Fin del bucle.' };
-    } else if (block.type === 'if') {
-      const matches = conditionIsTrue(block.condition);
-      yield { id: block.id, message: matches ? 'Condición verdadera: rama «Si se cumple».' : 'Condición falsa: rama «Si no se cumple».' };
-      yield* execute(matches ? block.children : block.elseChildren);
-    } else {
-      yield { id: block.id, action: () => perform(block.type), message: BLOCKS[block.type].label };
-    }
+function conditionValue(block) {
+  if (!block) return false;
+  if (block.type === 'logic_boolean') return block.getFieldValue('BOOL') === 'TRUE';
+  if (block.type === 'logic_compare') {
+    const left = evaluateValue(block.getInputTargetBlock('A'));
+    const right = evaluateValue(block.getInputTargetBlock('B'));
+    return ({ EQ: () => left === right, NEQ: () => left !== right, LT: () => left < right, LTE: () => left <= right, GT: () => left > right, GTE: () => left >= right })[block.getFieldValue('OP')]();
   }
+  if (block.type === 'logic_operation') {
+    const left = conditionValue(block.getInputTargetBlock('A'));
+    const right = conditionValue(block.getInputTargetBlock('B'));
+    return block.getFieldValue('OP') === 'AND' ? left && right : left || right;
+  }
+  if (block.type === 'logic_negate') return !conditionValue(block.getInputTargetBlock('BOOL'));
+  if (block.type === 'karel_path') {
+    const offsets = { FRONT: 0, RIGHT: 1, LEFT: 3 };
+    const open = freeIn((state.world.dir + offsets[block.getFieldValue('DIRECTION')]) % 4);
+    return block.getFieldValue('STATE') === 'FREE' ? open : !open;
+  }
+  if (block.type === 'karel_marker_here') return (state.world.markers[keyAt(state.world.x, state.world.y)] || 0) > 0;
+  if (block.type === 'karel_bag_empty') return state.world.bag === 0;
+  if (block.type === 'karel_facing') return state.world.dir === Number(block.getFieldValue('DIRECTION'));
+  if (block.type === 'karel_at_goal') return state.world.x === currentLevel().goal[0] && state.world.y === currentLevel().goal[1];
+  return Boolean(evaluateValue(block));
 }
-function conditionLabel(id) { return CONDITIONS.find(([value]) => value === id)?.[1] || id; }
+function evaluateValue(block) {
+  if (!block) return 0;
+  if (block.type === 'math_number') return Number(block.getFieldValue('NUM')) || 0;
+  if (block.type === 'text') return block.getFieldValue('TEXT') || '';
+  if (block.type === 'logic_boolean') return block.getFieldValue('BOOL') === 'TRUE';
+  if (block.type === 'variables_get') return state.variables.get(block.getFieldValue('VAR')) ?? 0;
+  if (block.type === 'karel_marker_count') return state.world.markers[keyAt(state.world.x, state.world.y)] || 0;
+  if (block.type === 'karel_bag_count') return state.world.bag;
+  if (block.type === 'logic_compare' || block.type === 'logic_operation' || block.type === 'logic_negate' || block.type === 'karel_path' || block.type === 'karel_marker_here' || block.type === 'karel_bag_empty' || block.type === 'karel_facing' || block.type === 'karel_at_goal') return conditionValue(block);
+  if (block.type === 'math_arithmetic') {
+    const a = Number(evaluateValue(block.getInputTargetBlock('A'))); const b = Number(evaluateValue(block.getInputTargetBlock('B')));
+    return ({ ADD: () => a + b, MINUS: () => a - b, MULTIPLY: () => a * b, DIVIDE: () => b === 0 ? 0 : a / b, POWER: () => a ** b })[block.getFieldValue('OP')]();
+  }
+  if (block.type === 'math_modulo') return Number(evaluateValue(block.getInputTargetBlock('DIVIDEND'))) % (Number(evaluateValue(block.getInputTargetBlock('DIVISOR'))) || 1);
+  if (block.type === 'math_single') {
+    const number = Number(evaluateValue(block.getInputTargetBlock('NUM'))); const op = block.getFieldValue('OP');
+    return ({ ROOT: () => Math.sqrt(Math.max(0, number)), ABS: () => Math.abs(number), NEG: () => -number, ROUND: () => Math.round(number), ROUNDUP: () => Math.ceil(number), ROUNDDOWN: () => Math.floor(number), SIN: () => Math.sin(number * Math.PI / 180), COS: () => Math.cos(number * Math.PI / 180), TAN: () => Math.tan(number * Math.PI / 180), LN: () => Math.log(number), LOG10: () => Math.log10(number), EXP: () => Math.exp(number), '10_POW': () => 10 ** number })[op]?.() ?? 0;
+  }
+  if (block.type === 'math_random_int') {
+    const from = Math.ceil(Number(evaluateValue(block.getInputTargetBlock('FROM')))); const to = Math.floor(Number(evaluateValue(block.getInputTargetBlock('TO'))));
+    return Math.floor(Math.random() * (to - from + 1)) + from;
+  }
+  if (block.type === 'text_join') return block.inputList.filter(input => input.type === Blockly.inputTypes.VALUE).map(input => String(evaluateValue(block.getInputTargetBlock(input.name)))).join('');
+  if (block.type === 'text_length') return String(evaluateValue(block.getInputTargetBlock('VALUE'))).length;
+  return 0;
+}
+function* executeStack(firstBlock) {
+  let block = firstBlock;
+  while (block) { if (block.isEnabled()) yield* executeBlock(block); block = block.getNextBlock(); }
+}
+function* executeWorkspace() {
+  for (const block of state.workspace.getTopBlocks(true)) yield* executeStack(block);
+}
+function* executeBlock(block) {
+  const type = block.type;
+  if (type === 'controls_repeat_ext') {
+    const count = Math.max(0, Math.min(10000, Math.floor(Number(evaluateValue(block.getInputTargetBlock('TIMES'))))));
+    for (let index = 0; index < count; index++) yield* executeStack(block.getInputTargetBlock('DO'));
+    return;
+  }
+  if (type === 'controls_whileUntil') {
+    let turns = 0;
+    while (conditionValue(block.getInputTargetBlock('BOOL')) === (block.getFieldValue('MODE') === 'WHILE')) {
+      if (turns++ >= 10000) throw new Error('Este bucle superó 10 000 repeticiones. Revisa su condición.');
+      const before = worldSignature();
+      yield { id: block.id, message: 'Evaluando la condición del bucle' };
+      yield* executeStack(block.getInputTargetBlock('DO'));
+      if (before === worldSignature() && conditionValue(block.getInputTargetBlock('BOOL')) === (block.getFieldValue('MODE') === 'WHILE')) throw new Error('El bucle no cambia el mundo ni sus variables. Ajusta la condición o el cuerpo.');
+    }
+    return;
+  }
+  if (type === 'controls_if') {
+    const branches = block.inputList.filter(input => /^IF\d+$/.test(input.name));
+    for (const input of branches) {
+      if (conditionValue(block.getInputTargetBlock(input.name))) { yield* executeStack(block.getInputTargetBlock(`DO${input.name.slice(2)}`)); return; }
+    }
+    yield* executeStack(block.getInputTargetBlock('ELSE'));
+    return;
+  }
+  if (type === 'controls_for') {
+    const variable = block.getFieldValue('VAR'); const start = Number(evaluateValue(block.getInputTargetBlock('FROM'))); const end = Number(evaluateValue(block.getInputTargetBlock('TO'))); const increment = Number(evaluateValue(block.getInputTargetBlock('BY'))) || 1;
+    let turns = 0;
+    for (let value = start; increment > 0 ? value <= end : value >= end; value += increment) {
+      if (turns++ >= 10000) throw new Error('Este bucle superó 10 000 repeticiones. Revisa sus valores.');
+      state.variables.set(variable, value); yield* executeStack(block.getInputTargetBlock('DO'));
+    }
+    return;
+  }
+  if (type === 'variables_set') { state.variables.set(block.getFieldValue('VAR'), evaluateValue(block.getInputTargetBlock('VALUE'))); return; }
+  if (type === 'math_change') { const variable = block.getFieldValue('VAR'); state.variables.set(variable, Number(state.variables.get(variable) || 0) + Number(evaluateValue(block.getInputTargetBlock('DELTA')))); return; }
+  if (type === 'karel_move') {
+    const steps = Math.max(0, Math.min(10000, Math.floor(Number(evaluateValue(block.getInputTargetBlock('STEPS'))))));
+    for (let index = 0; index < steps; index++) yield { id: block.id, action: () => perform('move'), message: 'Avanzar' };
+    return;
+  }
+  if (type === 'karel_turn') { yield { id: block.id, action: () => perform(block.getFieldValue('DIRECTION') === 'LEFT' ? 'left' : 'right'), message: 'Girar' }; return; }
+  if (type === 'karel_pick' || type === 'karel_drop') { yield { id: block.id, action: () => perform(type === 'karel_pick' ? 'pick' : 'drop'), message: type === 'karel_pick' ? 'Recoger marcador' : 'Colocar marcador' }; }
+}
 function perform(type) {
   const world = state.world; const position = keyAt(world.x, world.y);
   if (type === 'move') {
@@ -328,7 +370,8 @@ function isComplete() {
 function finishExecution(message, kind = '') {
   state.running = false; state.paused = false; state.iterator = null; state.activeId = null;
   if (state.timer) clearTimeout(state.timer); state.timer = null;
-  renderAll(); setTransport();
+  state.workspace?.highlightBlock(null);
+  renderWorld(); updateWorkspaceUI(); setTransport();
   if (message) announce(message, kind);
 }
 function stopExecution(showMessage = true) {
@@ -336,7 +379,7 @@ function stopExecution(showMessage = true) {
   if (state.iterator || state.running) finishExecution(showMessage ? 'Ejecución detenida. Puedes ajustar el programa y probar de nuevo.' : '', '');
 }
 function nextStep() {
-  if (!state.iterator) { state.world = newWorld(); state.iterator = execute(state.program); announce('Programa preparado. Ejecuta para ver qué ocurre.'); }
+  if (!state.iterator) { state.world = newWorld(); state.variables.clear(); state.iterator = executeWorkspace(); announce('Programa preparado. Ejecuta para ver qué ocurre.'); }
   try {
     const result = state.iterator.next();
     if (result.done) {
@@ -349,8 +392,9 @@ function nextStep() {
       return false;
     }
     const step = result.value; state.activeId = step.id;
+    state.workspace.highlightBlock(step.id);
     if (step.action) step.action();
-    renderAll(); announce(step.message); return true;
+    renderWorld(); updateWorkspaceUI(); setTransport(); announce(step.message); return true;
   } catch (error) {
     finishExecution(error.message || 'Algo salió mal al ejecutar este bloque.', 'error'); return false;
   }
@@ -365,53 +409,24 @@ function runLoop() {
 function runProgram() {
   if (state.running && !state.paused) { state.paused = true; if (state.timer) clearTimeout(state.timer); setTransport(); return; }
   if (state.running && state.paused) { state.paused = false; setTransport(); runLoop(); return; }
-  if (!state.program.length) { announce('Añade al menos un bloque antes de ejecutar.', 'error'); return; }
-  if (!state.iterator) { state.world = newWorld(); state.iterator = execute(state.program); setWorld(); }
+  if (!state.workspace.getTopBlocks(false).length) { announce('Arrastra al menos un bloque al espacio antes de ejecutar.', 'error'); return; }
+  if (!state.iterator) { state.world = newWorld(); state.variables.clear(); state.iterator = executeWorkspace(); setWorld(); }
   state.running = true; state.paused = false;
-  renderAll(); setTransport(); announce('¡Karel está en marcha!'); runLoop();
+  renderWorld(); updateWorkspaceUI(); setTransport(); announce('¡Karel está en marcha!'); runLoop();
 }
 function stepOnce() {
   if (state.running) { if (!state.paused) { state.paused = true; if (state.timer) clearTimeout(state.timer); setTransport(); } state.running = false; }
-  if (!state.iterator) { state.world = newWorld(); state.iterator = execute(state.program); }
-  if (!state.program.length) { announce('Añade al menos un bloque antes de ejecutar.', 'error'); return; }
+  if (!state.workspace.getTopBlocks(false).length) { announce('Arrastra al menos un bloque al espacio antes de ejecutar.', 'error'); return; }
+  if (!state.iterator) { state.world = newWorld(); state.variables.clear(); state.iterator = executeWorkspace(); }
   const more = nextStep();
   if (more) { setHint('Paso ejecutado. Pulsa F10 para continuar.'); setTransport(); }
 }
-function changeScope(id, branch) {
-  state.scope.push({ id, branch }); renderScope();
-}
-
-$('#level-select').innerHTML = levels.map((level, index) => `<option value="${index}">${String(index + 1).padStart(2, '0')} · ${level.name}</option>`).join('');
+initializeWorkspace();
+initializeLevelSelector();
 $('#level-select').addEventListener('change', event => startLevel(Number(event.target.value)));
-$('.palette-grid').addEventListener('click', event => { const button = event.target.closest('[data-add]'); if (button) addBlock(button.dataset.add); });
-programEl.addEventListener('click', event => {
-  const enter = event.target.closest('[data-enter]'); if (enter) { changeScope(enter.dataset.enter, enter.dataset.branch); return; }
-  const crumb = event.target.closest('[data-scope-index]');
-  if (crumb) { state.scope = state.scope.slice(0, Number(crumb.dataset.scopeIndex)); renderScope(); return; }
-  const action = event.target.closest('[data-action]');
-  if (action) {
-    const { id, action: name } = action.dataset;
-    if (name === 'delete') deleteBlock(id); else moveBlock(id, name === 'up' ? -1 : 1);
-    return;
-  }
-  const row = event.target.closest('.block-row');
-  if (row) { state.selectedId = row.dataset.id; renderScope(); }
-});
-$('#scope-crumb').addEventListener('click', event => {
-  const crumb = event.target.closest('[data-scope-index]');
-  if (!crumb) return;
-  state.scope = state.scope.slice(0, Number(crumb.dataset.scopeIndex));
-  renderScope();
-});
-programEl.addEventListener('change', event => {
-  const input = event.target.closest('[data-edit]'); if (!input) return;
-  const found = findBlock(input.dataset.id); if (!found) return;
-  const next = input.dataset.edit === 'times' ? Math.min(99, Math.max(1, Number(input.value) || 1)) : input.value;
-  updateProgram(() => { found.block[input.dataset.edit] = next; state.selectedId = found.block.id; });
-});
-$('#undo-button').addEventListener('click', () => { if (!state.undo.length || state.running) return; state.redo.push(clone(state.program)); state.program = state.undo.pop(); state.scope = []; renderAll(); });
-$('#redo-button').addEventListener('click', () => { if (!state.redo.length || state.running) return; state.undo.push(clone(state.program)); state.program = state.redo.pop(); state.scope = []; renderAll(); });
-$('#clear-button').addEventListener('click', () => { if (!state.program.length || state.running) return; updateProgram(() => { state.program = []; state.scope = []; state.selectedId = null; }); });
+$('#undo-button').addEventListener('click', () => { if (!state.running) state.workspace.undo(false); });
+$('#redo-button').addEventListener('click', () => { if (!state.running) state.workspace.undo(true); });
+$('#clear-button').addEventListener('click', () => { if (state.running) return; state.savedPrograms.delete(state.levelIndex); state.workspace.clear(); updateWorkspaceUI(); });
 $('#run-button').addEventListener('click', runProgram);
 $('#pause-button').addEventListener('click', () => { if (state.running) runProgram(); });
 $('#step-button').addEventListener('click', stepOnce);
@@ -422,8 +437,7 @@ document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); runProgram(); }
   else if (event.key === 'F10') { event.preventDefault(); stepOnce(); }
   else if (event.key === 'Escape') stopExecution();
-  else if ((event.key === 'Delete' || event.key === 'Backspace') && state.selectedId && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) deleteBlock(state.selectedId);
-  else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); (event.shiftKey ? $('#redo-button') : $('#undo-button')).click(); }
-  else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); $('#redo-button').click(); }
+  else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); state.workspace.undo(event.shiftKey); }
+  else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); state.workspace.undo(true); }
 });
 startLevel(0);

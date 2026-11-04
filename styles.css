@@ -3,3 +3,18 @@
 @media(max-width:760px){.topbar{height:60px;padding:0 17px}.topbar-center{display:none}.app-shell{display:flex;flex-direction:column;width:calc(100% - 24px);margin:13px auto 10px;gap:11px}.world-panel{padding:18px 15px 13px;min-height:520px}.code-panel{min-height:620px;padding:18px 15px 14px}.level-heading{margin-bottom:13px}h1{font-size:24px}.level-description{font-size:12px}.board-wrap{min-height:300px}.board{width:min(100%,500px)}.page-footer{width:calc(100% - 30px)}.palette-item{font-size:10px}.speed-control{gap:6px}.world-controls{gap:8px}}
 @media(max-width:430px){.app-shell{width:calc(100% - 16px)}.world-panel{padding:15px 11px 11px;min-height:470px}.code-panel{padding:16px 11px 12px}.level-select-wrap select{min-width:108px;padding-left:8px;font-size:10px}.level-heading{gap:5px}h1{font-size:22px}.level-description{max-width:235px;font-size:11px}.board-wrap{padding:10px 7px 9px;min-height:260px}.board-legend{gap:12px;font-size:9px}.world-footer{align-items:flex-start;flex-direction:column;padding:12px 0 9px}.world-controls{width:100%;justify-content:space-between}.stats{gap:19px}.palette{padding:8px}.palette-grid{gap:4px}.palette-item{height:33px;font-size:9px;gap:3px}.palette-symbol{width:12px;font-size:12px}.palette-plus{font-size:13px}.block-controls select{max-width:116px}.shortcut-hint{display:none}.page-footer{font-size:7px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+.code-panel{min-height:0}
+.program-list.blockly-workspace{position:relative;flex:none;width:100%;height:clamp(420px,55vh,620px);min-height:420px;overflow:hidden;padding:0;border:1px solid #e7ebe4;border-radius:8px;background:#fbfcfa}
+.blockly-workspace .blocklySvg{background:#fbfcfa}
+.blockly-workspace .blocklyToolbox{font:600 11px 'DM Sans',sans-serif;border-right:1px solid #e7ebe4}
+.blockly-workspace .blocklyToolboxCategoryContainer{height:auto;min-height:32px;margin:3px 4px;overflow:hidden;border-radius:6px}
+.blockly-workspace .blocklyToolboxCategory{min-height:32px;border-radius:6px;transition:filter .14s}
+.blockly-workspace .blocklyToolboxCategory:hover{filter:brightness(.96)}
+.blockly-workspace .blocklyToolboxCategoryLabel{font-weight:600}
+.blockly-workspace .blocklyFlyoutBackground{fill:#f4f7f3}
+.blockly-workspace .blocklyScrollbarHandle{fill:#bdccc1}
+.blockly-workspace .blocklyScrollbarBackground{fill:transparent}
+.workspace-caption{display:flex;align-items:center;gap:8px;color:#859087;font:500 9px var(--mono);letter-spacing:.08em}
+@media(max-width:760px){.program-list.blockly-workspace{height:480px;min-height:440px}}
+@media(max-width:430px){.program-list.blockly-workspace{height:440px;min-height:410px}.blockly-workspace .blocklyToolbox{font-size:10px}}

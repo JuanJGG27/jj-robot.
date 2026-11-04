@@ -9,6 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://unpkg.com/blockly@12.4.1/blockly_compressed.js"></script>
+    <script defer src="https://unpkg.com/blockly@12.4.1/blocks_compressed.js"></script>
+    <script defer src="https://unpkg.com/blockly@12.4.1/msg/es.js"></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -54,22 +57,8 @@
           <div class="history-controls"><button id="undo-button" class="small-icon-button" title="Deshacer" aria-label="Deshacer" disabled>↶</button><button id="redo-button" class="small-icon-button" title="Rehacer" aria-label="Rehacer" disabled>↷</button></div>
         </div>
 
-        <div class="palette" aria-label="Bloques disponibles">
-          <div class="palette-label">AÑADIR UN BLOQUE <span>+</span></div>
-          <div class="palette-grid">
-            <button class="palette-item move" data-add="move"><span class="palette-symbol">↑</span><span>Avanzar</span><span class="palette-plus">+</span></button>
-            <button class="palette-item turn" data-add="left"><span class="palette-symbol">↶</span><span>Girar izquierda</span><span class="palette-plus">+</span></button>
-            <button class="palette-item turn" data-add="right"><span class="palette-symbol">↷</span><span>Girar derecha</span><span class="palette-plus">+</span></button>
-            <button class="palette-item marker" data-add="pick"><span class="palette-symbol">●</span><span>Recoger</span><span class="palette-plus">+</span></button>
-            <button class="palette-item marker" data-add="drop"><span class="palette-symbol">◉</span><span>Colocar</span><span class="palette-plus">+</span></button>
-            <button class="palette-item repeat" data-add="repeat"><span class="palette-symbol">⟳</span><span>Repetir</span><span class="palette-plus">+</span></button>
-            <button class="palette-item loop" data-add="while"><span class="palette-symbol">↻</span><span>Mientras</span><span class="palette-plus">+</span></button>
-            <button class="palette-item condition" data-add="if"><span class="palette-symbol">◇</span><span>Si / si no</span><span class="palette-plus">+</span></button>
-          </div>
-        </div>
-
-        <div class="program-toolbar"><div id="scope-crumb" class="scope-crumb"><button data-scope="root" class="crumb-button active">PROGRAMA</button></div><button id="clear-button" class="text-button" title="Vaciar programa">Vaciar <span aria-hidden="true">×</span></button></div>
-        <div id="program-list" class="program-list" aria-label="Bloques de tu programa"></div>
+        <div class="program-toolbar"><span class="workspace-caption"><span class="live-dot"></span> ESPACIO DE BLOQUES</span><button id="clear-button" class="text-button" title="Vaciar espacio de bloques">Limpiar <span aria-hidden="true">×</span></button></div>
+        <div id="program-list" class="program-list blockly-workspace" aria-label="Espacio de programación con bloques"></div>
         <div class="run-dock"><div class="run-actions"><button id="run-button" class="run-button"><span class="run-glyph">▶</span><span id="run-label">Ejecutar programa</span><span class="run-shortcut">Ctrl ↵</span></button><button id="pause-button" class="transport-button" title="Pausar" aria-label="Pausar" disabled>Ⅱ</button><button id="step-button" class="transport-button" title="Ejecutar un paso" aria-label="Ejecutar un paso">▸|</button><button id="stop-button" class="transport-button stop-button" title="Detener" aria-label="Detener" disabled>■</button></div><div class="run-hint"><span class="hint-indicator"></span><span id="run-hint">Añade bloques y dale vida a Karel</span><span class="shortcut-hint">F10 · paso a paso</span></div></div>
       </section>
     </main>
