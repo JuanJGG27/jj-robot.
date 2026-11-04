@@ -1,20 +1,20 @@
-# Karel Reader
+# JJ Robot
 
 ## Versión web (sin Python)
 
-Abre [`index.html`](index.html) en un navegador moderno para jugar a Karel Club. La versión web está hecha con HTML, CSS y JavaScript, no necesita Python ni servidor. Requiere internet para cargar Blockly y las fuentes; incluye seis niveles, bloques de programación, bucles, condiciones, ejecución paso a paso y un editor para crear y guardar niveles personalizados. El control deslizante ajusta el espacio entre el mapa y el editor de bloques.
+Abre [`index.html`](index.html) en un navegador moderno para jugar a JJ Robot. La versión web está hecha con HTML, CSS y JavaScript, no necesita Python ni servidor. Requiere internet para cargar Blockly y las fuentes; incluye trece niveles progresivos, retos para revisar bloques concretos, ejecución paso a paso, una ruta visible y un editor para crear y guardar niveles personalizados. El control deslizante ajusta el espacio entre el mapa y el editor de bloques.
 
 ## Editor visual inspirado en Scratch
 
 El editor está construido sobre [Blockly 12.4.1](https://developers.google.com/blockly), que aporta el espacio de trabajo, categorías y flyouts, bloques que se arrastran y encajan, conexiones tipadas, variables, historial y serialización. La disposición vertical y el renderer Zelos se acercan a la experiencia de bloques de Scratch.
 
-[Scratch Blocks](https://github.com/scratchfoundation/scratch-blocks) es el proyecto oficial de Scratch sobre Blockly. Scratch Blocks gestiona la interfaz visual; el [Scratch VM](https://github.com/scratchfoundation/scratch-vm) ejecuta proyectos Scratch. Karel Club reutiliza Blockly para la edición, pero define bloques propios de Karel y los ejecuta con el intérprete JavaScript del juego. No carga proyectos Scratch ni implementa el Scratch VM.
+[Scratch Blocks](https://github.com/scratchfoundation/scratch-blocks) es el proyecto oficial de Scratch sobre Blockly. Scratch Blocks gestiona la interfaz visual; el [Scratch VM](https://github.com/scratchfoundation/scratch-vm) ejecuta proyectos Scratch. JJ Robot reutiliza Blockly para la edición, pero define bloques propios de Karel y los ejecuta con el intérprete JavaScript del juego. No carga proyectos Scratch ni implementa el Scratch VM.
 
 Las categorías incluyen movimiento, marcadores, control, sensores, operadores y variables. El control admite condicionales, bucles repetidos y bucles `mientras`; los operadores cubren lógica, comparaciones, matemáticas y texto. El usuario puede crear variables y usarlas en sus programas.
 
-**Versión 2.1 — jerarquía visual mejorada, movimientos ilimitados y deshacer/rehacer.**
+**Edición Python 2.1 — jerarquía visual mejorada, movimientos ilimitados y deshacer/rehacer.**
 
-**Karel Reader** es un juego educativo de programación visual construido completamente con Python. El jugador organiza bloques para guiar a Karel, recoger y colocar marcadores, evitar muros y completar objetivos.
+El juego original **Karel Reader** es una aplicación educativa de programación visual construida en Python. En JJ Robot, los jugadores organizan bloques para guiar a Karel, recoger y colocar marcadores, evitar muros y completar objetivos.
 
 Toda la interfaz y todos los mensajes para el jugador están en español.
 
@@ -29,8 +29,9 @@ Toda la interfaz y todos los mensajes para el jugador están en español.
 - Ramas visibles: **SI SE CUMPLE** y **SI NO SE CUMPLE**.
 - Condiciones basadas en el estado actual del mundo de Karel.
 - Ejecución animada, pausa, paso a paso, detención y velocidad ajustable.
-- Resaltado de la condición, la rama elegida y la instrucción en ejecución.
-- Seis niveles con muros, objetivos y marcadores, sin límite de movimientos.
+- Resaltado amarillo del bloque en ejecución, la condición y la rama elegida.
+- Ruta amarilla opcional que muestra por dónde se ha movido JJ en el tablero.
+- Trece niveles progresivos con misiones de repaso de bloques, muros, objetivos y marcadores.
 - Motor separado de la interfaz y cubierto por pruebas unitarias.
 - Sin paquetes de terceros: sólo usa la biblioteca estándar de Python.
 - No usa `eval`, `exec` ni ejecuta código arbitrario del usuario.
@@ -155,7 +156,7 @@ Estas reglas siguen los capítulos de Stanford Karel sobre `while` y condicional
 python3 -m unittest -v test_karel_reader.py
 ```
 
-Las pruebas no necesitan una pantalla gráfica. Validan movimientos ilimitados, giros, muros, marcadores, las 18 condiciones, ambas ramas, `Mientras`, repeticiones, profundidad, rutas, conteos, historial, movimiento de bloques, protección contra ciclos estructurales y los cuatro niveles.
+Las pruebas no necesitan una pantalla gráfica. Validan movimientos ilimitados, giros, muros, marcadores, las 18 condiciones, ambas ramas, `Mientras`, repeticiones, profundidad, rutas, conteos, historial, movimiento de bloques, protección contra ciclos estructurales y los seis niveles del juego Python original.
 
 ## Estructura
 

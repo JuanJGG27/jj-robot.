@@ -23,6 +23,17 @@ const levels = [
   makeLevel('Laberinto en zigzag', 10, 8, { x: 1, y: 6, dir: 0, bag: 0 }, [8, 1], 'Sigue el camino en zigzag para llegar a la meta.', { '2,2': 1 }, {}, [...Array.from({ length: 4 }, (_, i) => [3, i * 2, 'E']), ...Array.from({ length: 3 }, (_, i) => [3 + i * 2, 4, 'S'])]),
   makeLevel('Múltiples caminos', 10, 7, { x: 1, y: 5, dir: 0, bag: 0 }, [7, 2], 'Encuentra el camino correcto entre múltiples opciones.', { '3,3': 1 }, {}, [...Array.from({ length: 5 }, (_, i) => [4, i + 1, 'E']), ...Array.from({ length: 5 }, (_, i) => i + 2).filter(x => x !== 5).map(x => [x, 2, 'S']), [6, 4, 'E']]),
 ];
+function lessonLevel(level, focus, lesson) { return Object.assign(level, { focus, lesson }); }
+levels.push(
+  lessonLevel(makeLevel('Repite un camino', 8, 6, { x: 1, y: 3, dir: 1, bag: 0 }, [6, 3], 'Avanza cinco casillas con un solo bucle.'), 'REPETIR · MOVIMIENTO', 'Repite 5 veces, hacer Avanzar 1 casilla.'),
+  lessonLevel(makeLevel('Giros en cadena', 8, 6, { x: 2, y: 3, dir: 1, bag: 0 }, [2, 3], 'Quédate en el sitio y gira hasta mirar al este otra vez.'), 'REPETIR · GIROS', 'Repite 4 veces, hacer Girar a la derecha.'),
+  lessonLevel(makeLevel('Si 10 es mayor que 5', 8, 6, { x: 1, y: 3, dir: 1, bag: 0 }, [2, 3], 'Compara 10 y 5. Si 10 es mayor, avanza una casilla.'), 'SI · COMPARAR', 'Pon 10 > 5 dentro de Si y conecta Avanzar en su cuerpo.'),
+  lessonLevel(makeLevel('Cuando la comparación es falsa', 8, 6, { x: 1, y: 3, dir: 1, bag: 0 }, [2, 3], '3 no es mayor que 5. Observa cómo Si omite su cuerpo y sigue con el bloque siguiente.'), 'SI · FALSO', 'Usa Si 3 > 5 con un giro dentro. Después del Si, conecta Avanzar.'),
+  lessonLevel(makeLevel('Mientras haya camino', 8, 6, { x: 1, y: 3, dir: 1, bag: 0 }, [7, 3], 'Repite el movimiento solo mientras haya espacio delante.'), 'MIENTRAS · SENSOR', 'Mientras el camino al frente esté libre, avanza una casilla.'),
+  lessonLevel(makeLevel('Recoge solo si hay uno', 8, 6, { x: 1, y: 3, dir: 1, bag: 0 }, [3, 3], 'Llega al marcador, comprueba si hay uno y llévalo al objetivo.', { '2,3': 1 }, { '3,3': 1 }), 'SI · MARCADORES', 'Avanza, usa Si hay marcador aquí para Recoger, avanza y Coloca.'),
+  lessonLevel(makeLevel('Una variable cuenta pasos', 8, 6, { x: 1, y: 3, dir: 1, bag: 0 }, [4, 3], 'Guarda el número 3 en una variable y úsala para repetir el movimiento.'), 'VARIABLES · REPETIR', 'Crea la variable pasos, asígnale 3 y conéctala a Repetir.'),
+);
+levels[7].goalDirection = 1;
 const CUSTOM_LEVELS_KEY = 'karel-club-custom-levels';
 function loadCustomLevels() {
   try {
@@ -41,7 +52,7 @@ const programEl = $('#program-list');
 const state = {
   levelIndex: 0, world: null, workspace: null, variables: new Map(), savedPrograms: new Map(),
   iterator: null, running: false, paused: false, activeId: null,
-  timer: null, completedLevels: new Set(), builderTool: 'start',
+  timer: null, completedLevels: new Set(), showPath: false, tracePath: [], builderTool: 'start',
   builderDraft: { width: 8, height: 6, start: null, goal: null, markers: {}, targets: {}, walls: new Set() },
 };
 const currentLevel = () => levels[state.levelIndex];
@@ -129,19 +140,34 @@ function setWorld() {
   $('#level-title').textContent = level.name;
   $('#level-kicker').textContent = `MUNDO 01 · NIVEL ${String(state.levelIndex + 1).padStart(2, '0')}`;
   $('#level-description').textContent = level.description;
+  $('#level-focus').hidden = !level.focus;
+  $('#level-focus').textContent = level.focus ? `BLOQUE EN FOCO · ${level.focus}  /  ${level.lesson}` : '';
   $('#world-coordinates').textContent = `MUNDO ${level.width} × ${level.height}`;
   $('#level-select').value = String(state.levelIndex);
   renderWorld();
 }
 function renderWorld() {
   if (!state.world) return;
-  boardEl.querySelectorAll('.marker-token,.marker-count,.robot').forEach(element => element.remove());
+  boardEl.querySelectorAll('.marker-token,.marker-count,.robot,.route-trace').forEach(element => element.remove());
   for (const [cellKey, count] of Object.entries(state.world.markers)) {
     if (count < 1) continue;
     const cell = boardEl.querySelector(`[data-position="${cellKey}"]`);
     if (!cell) continue;
     const marker = document.createElement('span'); marker.className = 'marker-token'; marker.setAttribute('aria-hidden', 'true'); cell.append(marker);
     if (count > 1) { const amount = document.createElement('span'); amount.className = 'marker-count'; amount.textContent = count; cell.append(amount); }
+  }
+  if (state.showPath && state.tracePath.length) {
+    const level = currentLevel();
+    const trace = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    trace.classList.add('route-trace'); trace.setAttribute('viewBox', `0 0 ${level.width} ${level.height}`); trace.setAttribute('preserveAspectRatio', 'none');
+    if (state.tracePath.length > 1) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      line.setAttribute('points', state.tracePath.map(([x, y]) => `${x + 0.5},${y + 0.5}`).join(' ')); line.setAttribute('class', 'route-line'); trace.append(line);
+    }
+    const [startX, startY] = state.tracePath[0];
+    const startDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    startDot.setAttribute('cx', startX + 0.5); startDot.setAttribute('cy', startY + 0.5); startDot.setAttribute('r', '0.14'); startDot.setAttribute('class', 'route-start'); trace.append(startDot);
+    boardEl.append(trace);
   }
   const cell = boardEl.querySelector(`[data-position="${keyAt(state.world.x, state.world.y)}"]`);
   if (cell) {
@@ -153,6 +179,9 @@ function renderWorld() {
   }
   $('#bag-count').textContent = String(state.world.bag).padStart(2, '0');
   $('#action-count').textContent = String(state.world.actions).padStart(2, '0');
+}
+function resetPathTrace() {
+  state.tracePath = state.world ? [[state.world.x, state.world.y]] : [];
 }
 function registerKarelBlocks() {
   Blockly.Blocks.karel_move = { init() {
@@ -237,7 +266,7 @@ function startLevel(index) {
     state.workspace.clearUndo();
   }
   state.levelIndex = index;
-  state.world = newWorld();
+  state.world = newWorld(); resetPathTrace();
   state.variables = new Map();
   const savedProgram = state.savedPrograms.get(index);
   if (savedProgram) Blockly.serialization.workspaces.load(savedProgram, state.workspace);
@@ -504,7 +533,7 @@ function* executeBlock(block) {
   if (type === 'math_change') { const variable = block.getFieldValue('VAR'); state.variables.set(variable, Number(state.variables.get(variable) || 0) + Number(evaluateValue(block.getInputTargetBlock('DELTA')))); return; }
   if (type === 'karel_move') {
     const steps = Math.max(0, Math.min(10000, Math.floor(Number(evaluateValue(block.getInputTargetBlock('STEPS'))))));
-    for (let index = 0; index < steps; index++) yield { id: block.id, action: () => perform('move'), message: 'Avanzar' };
+    for (let index = 0; index < steps; index++) yield { id: block.id, action: () => perform('move'), message: 'Avanzar', trace: true };
     return;
   }
   if (type === 'karel_turn') { yield { id: block.id, action: () => perform(block.getFieldValue('DIRECTION') === 'LEFT' ? 'left' : 'right'), message: 'Girar' }; return; }
@@ -528,7 +557,7 @@ function perform(type) {
 }
 function isComplete() {
   const level = currentLevel();
-  return state.world.x === level.goal[0] && state.world.y === level.goal[1] && Object.entries(level.targets).every(([position, count]) => (state.world.markers[position] || 0) >= count);
+  return state.world.x === level.goal[0] && state.world.y === level.goal[1] && (level.goalDirection === undefined || state.world.dir === level.goalDirection) && Object.entries(level.targets).every(([position, count]) => (state.world.markers[position] || 0) >= count);
 }
 function finishExecution(message, kind = '') {
   state.running = false; state.paused = false; state.iterator = null; state.activeId = null;
@@ -557,6 +586,7 @@ function nextStep() {
     const step = result.value; state.activeId = step.id;
     state.workspace.highlightBlock(step.id);
     if (step.action) step.action();
+    if (step.trace) state.tracePath.push([state.world.x, state.world.y]);
     renderWorld(); updateWorkspaceUI(); setTransport(); announce(step.message); return true;
   } catch (error) {
     finishExecution(error.message || 'Algo salió mal al ejecutar este bloque.', 'error'); return false;
@@ -573,14 +603,14 @@ function runProgram() {
   if (state.running && !state.paused) { state.paused = true; if (state.timer) clearTimeout(state.timer); setTransport(); return; }
   if (state.running && state.paused) { state.paused = false; setTransport(); runLoop(); return; }
   if (!state.workspace.getTopBlocks(false).length) { announce('Arrastra al menos un bloque al espacio antes de ejecutar.', 'error'); return; }
-  if (!state.iterator) { state.world = newWorld(); state.variables.clear(); state.iterator = executeWorkspace(); setWorld(); }
+  if (!state.iterator) { state.world = newWorld(); resetPathTrace(); state.variables.clear(); state.iterator = executeWorkspace(); setWorld(); }
   state.running = true; state.paused = false;
   renderWorld(); updateWorkspaceUI(); setTransport(); announce('¡Karel está en marcha!'); runLoop();
 }
 function stepOnce() {
   if (state.running) { if (!state.paused) { state.paused = true; if (state.timer) clearTimeout(state.timer); setTransport(); } state.running = false; }
   if (!state.workspace.getTopBlocks(false).length) { announce('Arrastra al menos un bloque al espacio antes de ejecutar.', 'error'); return; }
-  if (!state.iterator) { state.world = newWorld(); state.variables.clear(); state.iterator = executeWorkspace(); }
+  if (!state.iterator) { state.world = newWorld(); resetPathTrace(); state.variables.clear(); state.iterator = executeWorkspace(); }
   const more = nextStep();
   if (more) { setHint('Paso ejecutado. Pulsa F10 para continuar.'); setTransport(); }
 }
@@ -596,7 +626,15 @@ $('#run-button').addEventListener('click', runProgram);
 $('#pause-button').addEventListener('click', () => { if (state.running) runProgram(); });
 $('#step-button').addEventListener('click', stepOnce);
 $('#stop-button').addEventListener('click', () => stopExecution());
-$('#restart-button').addEventListener('click', () => { state.world = newWorld(); state.iterator = null; finishExecution('', ''); renderWorld(); announce('Nivel reiniciado. Tu programa se conserva.'); setHint('Listo para otra ejecución'); });
+$('#restart-button').addEventListener('click', () => { state.world = newWorld(); resetPathTrace(); state.iterator = null; finishExecution('', ''); renderWorld(); announce('Nivel reiniciado. Tu programa se conserva.'); setHint('Listo para otra ejecución'); });
+$('#path-toggle').addEventListener('click', () => {
+  state.showPath = !state.showPath;
+  $('#path-toggle').setAttribute('aria-pressed', String(state.showPath));
+  $('#path-toggle').classList.toggle('active', state.showPath);
+  $('#path-toggle-label').textContent = state.showPath ? 'Ruta visible' : 'Ruta';
+  $('#path-toggle').title = state.showPath ? 'Ocultar el camino recorrido' : 'Mostrar el camino recorrido';
+  renderWorld();
+});
 $('#speed').addEventListener('input', event => { const value = Number(event.target.value); $('#speed-value').textContent = value < 300 ? 'LENTA' : value > 700 ? 'RÁPIDA' : 'NORMAL'; });
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); runProgram(); }
