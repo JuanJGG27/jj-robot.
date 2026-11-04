@@ -51,7 +51,7 @@ const boardEl = $('#board');
 const programEl = $('#program-list');
 const state = {
   levelIndex: 0, world: null, workspace: null, variables: new Map(), savedPrograms: new Map(),
-  iterator: null, running: false, paused: false, activeId: null,
+  programVersion: 'practice', iterator: null, running: false, paused: false, activeId: null,
   timer: null, completedLevels: new Set(), showPath: false, tracePath: [], builderTool: 'start',
   builderDraft: { width: 8, height: 6, start: null, goal: null, markers: {}, targets: {}, walls: new Set() },
 };
@@ -258,23 +258,172 @@ function initializeLevelSelector() {
   $('#level-select').innerHTML = levels.map((level, index) => `<option value="${index}">${String(index + 1).padStart(2, '0')} · ${level.name}</option>`).join('');
   $('#progress-label').textContent = `0 / ${levels.length} niveles`;
 }
-function startLevel(index) {
+function programSlot(index, version) { return `${index}:${version}`; }
+function createDemoBlock(type) {
+  const block = state.workspace.newBlock(type);
+  block.initSvg(); block.render();
+  return block;
+}
+function createDemoNumber(value) {
+  const block = createDemoBlock('math_number');
+  block.setFieldValue(String(value), 'NUM');
+  return block;
+}
+function connectDemoSequence(blocks) {
+  for (let index = 0; index < blocks.length - 1; index++) blocks[index].nextConnection.connect(blocks[index + 1].previousConnection);
+  return blocks[0] || null;
+}
+function createDemoMove(steps = 1) {
+  const block = createDemoBlock('karel_move');
+  block.getInput('STEPS').connection.connect(createDemoNumber(steps).outputConnection);
+  return block;
+}
+function createDemoTurn(direction = 'RIGHT') {
+  const block = createDemoBlock('karel_turn');
+  block.setFieldValue(direction, 'DIRECTION');
+  return block;
+}
+function createDemoRepeat(count, children) {
+  const block = createDemoBlock('controls_repeat_ext');
+  block.getInput('TIMES').connection.connect(typeof count === 'number' ? createDemoNumber(count).outputConnection : count.outputConnection);
+  const body = connectDemoSequence(children);
+  if (body) block.getInput('DO').connection.connect(body.previousConnection);
+  return block;
+}
+function createDemoComparison(left, operator, right) {
+  const block = createDemoBlock('logic_compare');
+  block.setFieldValue(operator, 'OP');
+  block.getInput('A').connection.connect(createDemoNumber(left).outputConnection);
+  block.getInput('B').connection.connect(createDemoNumber(right).outputConnection);
+  return block;
+}
+function createDemoPathCondition(direction = 'FRONT', status = 'FREE') {
+  const block = createDemoBlock('karel_path');
+  block.setFieldValue(direction, 'DIRECTION'); block.setFieldValue(status, 'STATE');
+  return block;
+}
+function createDemoIf(condition, children) {
+  const block = createDemoBlock('controls_if');
+  block.getInput('IF0').connection.connect(condition.outputConnection);
+  const body = connectDemoSequence(children);
+  if (body) block.getInput('DO0').connection.connect(body.previousConnection);
+  return block;
+}
+function shortestDirections(level, start, goal) {
+  const queue = [{ x: start.x, y: start.y, directions: [] }];
+  const visited = new Set([keyAt(start.x, start.y)]);
+  const edges = ['N', 'E', 'S', 'W'];
+  while (queue.length) {
+    const current = queue.shift();
+    if (current.x === goal[0] && current.y === goal[1]) return current.directions;
+    for (let direction = 0; direction < DIRECTIONS.length; direction++) {
+      const { dx, dy } = DIRECTIONS[direction];
+      const x = current.x + dx; const y = current.y + dy; const position = keyAt(x, y);
+      if (x < 0 || y < 0 || x >= level.width || y >= level.height || visited.has(position) || level.walls.has(keyWall(current.x, current.y, edges[direction]))) continue;
+      visited.add(position);
+      queue.push({ x, y, directions: [...current.directions, direction] });
+    }
+  }
+  return null;
+}
+function createRouteDemo(level, guardMoves = false) {
+  const blocks = [];
+  const position = { x: level.start.x, y: level.start.y };
+  let facing = level.start.dir;
+  function travelTo(destination) {
+    const route = shortestDirections(level, position, destination);
+    if (!route) return false;
+    for (let cursor = 0; cursor < route.length;) {
+      const direction = route[cursor];
+      const turns = (direction - facing + 4) % 4;
+      if (turns === 1) blocks.push(createDemoTurn('RIGHT'));
+      else if (turns === 3) blocks.push(createDemoTurn('LEFT'));
+      else if (turns === 2) blocks.push(createDemoTurn('RIGHT'), createDemoTurn('RIGHT'));
+      facing = direction;
+      let run = 0;
+      while (route[cursor] === direction) {
+        position.x += DIRECTIONS[direction].dx; position.y += DIRECTIONS[direction].dy;
+        cursor++; run++;
+      }
+      if (guardMoves) blocks.push(createDemoRepeat(run, [createDemoIf(createDemoPathCondition(), [createDemoMove()])]));
+      else if (run > 1) blocks.push(createDemoRepeat(run, [createDemoMove()]));
+      else blocks.push(createDemoMove());
+    }
+    return true;
+  }
+  const requiredTargets = Object.keys(level.targets).length > 0;
+  if (requiredTargets) {
+    for (const [positionKey, count] of Object.entries(level.markers)) {
+      const [x, y] = positionKey.split(',').map(Number);
+      if (!travelTo([x, y])) return [];
+      for (let index = 0; index < count; index++) blocks.push(createDemoBlock('karel_pick'));
+    }
+    for (const [positionKey, count] of Object.entries(level.targets)) {
+      const [x, y] = positionKey.split(',').map(Number);
+      if (!travelTo([x, y])) return [];
+      for (let index = 0; index < count; index++) blocks.push(createDemoBlock('karel_drop'));
+    }
+  }
+  if (!travelTo(level.goal)) return [];
+  return blocks;
+}
+function addDemoProgram(levelIndex) {
+  let blocks;
+  switch (levelIndex) {
+    case 0: blocks = [createDemoRepeat(5, [createDemoMove()]), createDemoTurn(), createDemoRepeat(2, [createDemoMove()])]; break;
+    case 1: blocks = [createDemoMove(2), createDemoBlock('karel_pick'), createDemoMove(), createDemoTurn('LEFT'), createDemoRepeat(3, [createDemoMove()]), createDemoTurn(), createDemoRepeat(2, [createDemoMove()]), createDemoBlock('karel_drop')]; break;
+    case 2: blocks = createRouteDemo(currentLevel(), true); break;
+    case 3: blocks = [createDemoRepeat(4, [createDemoMove(), createDemoBlock('karel_drop')]), createDemoMove()]; break;
+    case 4: case 5: blocks = createRouteDemo(currentLevel(), levelIndex === 5); break;
+    case 6: blocks = [createDemoRepeat(5, [createDemoMove()])]; break;
+    case 7: blocks = [createDemoRepeat(4, [createDemoTurn()])]; break;
+    case 8: blocks = [createDemoIf(createDemoComparison(10, 'GT', 5), [createDemoMove()])]; break;
+    case 9: blocks = [createDemoIf(createDemoComparison(3, 'GT', 5), [createDemoTurn('LEFT')]), createDemoMove()]; break;
+    case 10: {
+      const loop = createDemoBlock('controls_whileUntil');
+      loop.setFieldValue('WHILE', 'MODE'); loop.getInput('BOOL').connection.connect(createDemoPathCondition().outputConnection);
+      loop.getInput('DO').connection.connect(createDemoMove().previousConnection); blocks = [loop]; break;
+    }
+    case 11: blocks = [createDemoMove(), createDemoIf(createDemoBlock('karel_marker_here'), [createDemoBlock('karel_pick')]), createDemoMove(), createDemoBlock('karel_drop')]; break;
+    case 12: {
+      const variable = state.workspace.getVariableMap().createVariable('pasos');
+      const assign = createDemoBlock('variables_set'); assign.setFieldValue(variable.getId(), 'VAR');
+      assign.getInput('VALUE').connection.connect(createDemoNumber(3).outputConnection);
+      const get = createDemoBlock('variables_get'); get.setFieldValue(variable.getId(), 'VAR');
+      blocks = [assign, createDemoRepeat(get, [createDemoMove()])]; break;
+    }
+    default: blocks = createRouteDemo(currentLevel(), false);
+  }
+  const first = connectDemoSequence(blocks);
+  if (first) first.moveBy(42, 42);
+}
+function updateProgramVersionUI() {
+  const isDemo = state.programVersion === 'demo';
+  $('#practice-version').classList.toggle('active', !isDemo);
+  $('#demo-version').classList.toggle('active', isDemo);
+  $('#practice-version').setAttribute('aria-pressed', String(!isDemo));
+  $('#demo-version').setAttribute('aria-pressed', String(isDemo));
+  $('#program-heading').textContent = isDemo ? 'Ejemplo' : 'Tu programa';
+}
+function startLevel(index, nextVersion = state.programVersion) {
   stopExecution(false);
   if (state.workspace) {
-    state.savedPrograms.set(state.levelIndex, Blockly.serialization.workspaces.save(state.workspace));
+    state.savedPrograms.set(programSlot(state.levelIndex, state.programVersion), Blockly.serialization.workspaces.save(state.workspace));
     state.workspace.clear();
     state.workspace.clearUndo();
   }
-  state.levelIndex = index;
+  state.levelIndex = index; state.programVersion = nextVersion;
   state.world = newWorld(); resetPathTrace();
   state.variables = new Map();
-  const savedProgram = state.savedPrograms.get(index);
+  const savedProgram = state.savedPrograms.get(programSlot(index, nextVersion));
   if (savedProgram) Blockly.serialization.workspaces.load(savedProgram, state.workspace);
+  else if (nextVersion === 'demo') addDemoProgram(index);
   state.workspace.clearUndo();
+  updateProgramVersionUI();
   $('#level-select').value = String(index);
   $('#progress-label').textContent = `${state.completedLevels.size} / ${levels.length} niveles`;
   announce(index === 0 ? '¡Tu próximo reto empieza aquí!' : `Nivel ${index + 1} listo. ¡A programar!`);
-  setHint('Arrastra bloques al espacio y únelos');
+  setHint(nextVersion === 'demo' ? 'Ejecuta el ejemplo y observa los bloques' : 'Arrastra bloques al espacio y únelos');
   setWorld(); updateWorkspaceUI(); renderWorld();
 }
 function showBuilderMessage(message, kind = '') {
@@ -619,6 +768,8 @@ initializeLevelSelector();
 initializeBuilder();
 initializeSplitSlider();
 $('#level-select').addEventListener('change', event => startLevel(Number(event.target.value)));
+$('#practice-version').addEventListener('click', () => startLevel(state.levelIndex, 'practice'));
+$('#demo-version').addEventListener('click', () => startLevel(state.levelIndex, 'demo'));
 $('#undo-button').addEventListener('click', () => { if (!state.running) state.workspace.undo(false); });
 $('#redo-button').addEventListener('click', () => { if (!state.running) state.workspace.undo(true); });
 $('#clear-button').addEventListener('click', () => { if (state.running) return; state.savedPrograms.delete(state.levelIndex); state.workspace.clear(); updateWorkspaceUI(); });

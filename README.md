@@ -2,7 +2,7 @@
 
 ## Versión web (sin Python)
 
-Abre [`index.html`](index.html) en un navegador moderno para jugar a JJ Robot. La versión web está hecha con HTML, CSS y JavaScript, no necesita Python ni servidor. Requiere internet para cargar Blockly y las fuentes; incluye trece niveles progresivos, retos para revisar bloques concretos, ejecución paso a paso, una ruta visible y un editor para crear y guardar niveles personalizados. El control deslizante ajusta el espacio entre el mapa y el editor de bloques.
+Abre [`index.html`](index.html) en un navegador moderno para jugar a JJ Robot. La versión web está hecha con HTML, CSS y JavaScript, no necesita Python ni servidor. Requiere internet para cargar Blockly y las fuentes; incluye trece niveles progresivos, retos para revisar bloques concretos, ejecución paso a paso, una ruta visible y un editor para crear y guardar niveles personalizados. Cada nivel tiene una versión **Práctica** en blanco y una versión **Demo** con un programa de ejemplo; al alternar se conserva el trabajo de cada versión. El control deslizante ajusta el espacio entre el mapa y el editor de bloques.
 
 ## Editor visual inspirado en Scratch
 
@@ -32,6 +32,7 @@ Toda la interfaz y todos los mensajes para el jugador están en español.
 - Resaltado amarillo del bloque en ejecución, la condición y la rama elegida.
 - Ruta amarilla opcional que muestra por dónde se ha movido JJ en el tablero.
 - Trece niveles progresivos con misiones de repaso de bloques, muros, objetivos y marcadores.
+- Dos versiones independientes por nivel: práctica en blanco y demo precargada con un programa que resuelve el reto.
 - Motor separado de la interfaz y cubierto por pruebas unitarias.
 - Sin paquetes de terceros: sólo usa la biblioteca estándar de Python.
 - No usa `eval`, `exec` ni ejecuta código arbitrario del usuario.

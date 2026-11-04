@@ -82,6 +82,10 @@
 @media(max-width:430px){.app-shell{width:calc(100% - 16px)}.level-builder{padding:15px 11px}.builder-heading{margin-bottom:16px}.builder-heading h1{font-size:22px}.builder-badge{font-size:7px;padding:7px}.builder-canvas{min-height:280px;padding:10px 7px}.builder-key{gap:10px;font-size:8px}.builder-tool{font-size:9px}.builder-actions .run-button{font-size:10px}}
 
 #level-focus{margin-top:9px;padding:7px 9px;border-left:3px solid #e8bb39;border-radius:0 5px 5px 0;background:#fff8df;color:#7f692d;font-size:10px;line-height:1.45}
+.version-toggle{display:inline-flex;align-items:center;gap:3px;padding:3px;margin-top:8px;border:1px solid #e6e9e3;border-radius:7px;background:#f5f7f3}
+.version-button{min-width:78px;padding:6px 11px;border:0;border-radius:5px;background:transparent;color:#7f8a80;font-size:10px;font-weight:700;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.version-button.active{background:#fff;color:#34775d;box-shadow:0 1px 3px #253d2b20}
+.version-button:not(.active):hover{color:#34473a}
 #program-list .blocklyHighlighted>.blocklyPath{stroke:#ffd629!important;stroke-width:5px!important;filter:drop-shadow(0 0 2px #e8bc19)!important}
 .route-trace{position:absolute;inset:0;z-index:2;width:100%;height:100%;overflow:visible;pointer-events:none}
 .route-line{fill:none;stroke:#e5b92b;stroke-width:.12;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 .025rem #fff);opacity:.95}

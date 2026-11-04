@@ -43,6 +43,10 @@
             <h1 id="level-title">Primeros pasos</h1>
             <p id="level-description" class="level-description"></p>
             <p id="level-focus" class="level-focus" hidden></p>
+            <div class="version-toggle" role="group" aria-label="Versión del nivel">
+              <button id="practice-version" class="version-button active" type="button" aria-pressed="true">Práctica</button>
+              <button id="demo-version" class="version-button" type="button" aria-pressed="false">Demo</button>
+            </div>
           </div>
           <label class="level-select-wrap"><span class="sr-only">Seleccionar nivel</span><select id="level-select" aria-label="Seleccionar nivel"></select><span class="select-chevron" aria-hidden="true">⌄</span></label>
         </div>
@@ -64,8 +68,8 @@
       </section>
 
       <section class="code-panel" aria-labelledby="code-title">
-        <div class="code-heading">
-          <div><div class="eyebrow"><span class="eyebrow-line coral"></span>EL TALLER</div><h2 id="code-title">Tu programa<span class="block-count" id="block-count">0</span></h2></div>
+          <div class="code-heading">
+          <div><div class="eyebrow"><span class="eyebrow-line coral"></span>EL TALLER</div><h2 id="code-title"><span id="program-heading">Tu programa</span><span class="block-count" id="block-count">0</span></h2></div>
           <div class="history-controls"><button id="undo-button" class="small-icon-button" title="Deshacer" aria-label="Deshacer" disabled>↶</button><button id="redo-button" class="small-icon-button" title="Rehacer" aria-label="Rehacer" disabled>↷</button></div>
         </div>
 
