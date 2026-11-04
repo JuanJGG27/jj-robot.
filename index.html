@@ -24,7 +24,18 @@
       <div class="topbar-right"><div class="streak"><span class="streak-dot"></span><span id="progress-label">0 / 6 niveles</span></div><button class="avatar" aria-label="Perfil">K</button></div>
     </header>
 
-    <main class="app-shell">
+    <main id="app-shell" class="app-shell">
+      <nav class="mode-tabs" role="tablist" aria-label="Modo de juego">
+        <button id="play-tab-button" class="mode-tab active" role="tab" aria-selected="true" aria-controls="play-mode">Jugar <span>↗</span></button>
+        <button id="builder-tab-button" class="mode-tab" role="tab" aria-selected="false" aria-controls="level-builder">Crear nivel <span>＋</span></button>
+      </nav>
+      <div id="split-control" class="split-control">
+        <span class="split-label map-label">MAPA</span>
+        <input id="split-size" type="range" min="30" max="70" step="5" value="55" aria-label="Cambiar espacio entre mapa y bloques" />
+        <span id="split-value" class="split-value">55 / 45</span>
+        <span class="split-label code-label">BLOQUES</span>
+      </div>
+      <section id="play-mode" class="play-mode" role="tabpanel" aria-labelledby="play-tab-button">
       <section class="world-panel" aria-labelledby="level-title">
         <div class="level-heading">
           <div>
@@ -60,6 +71,41 @@
         <div class="program-toolbar"><span class="workspace-caption"><span class="live-dot"></span> ESPACIO DE BLOQUES</span><button id="clear-button" class="text-button" title="Vaciar espacio de bloques">Limpiar <span aria-hidden="true">×</span></button></div>
         <div id="program-list" class="program-list blockly-workspace" aria-label="Espacio de programación con bloques"></div>
         <div class="run-dock"><div class="run-actions"><button id="run-button" class="run-button"><span class="run-glyph">▶</span><span id="run-label">Ejecutar programa</span><span class="run-shortcut">Ctrl ↵</span></button><button id="pause-button" class="transport-button" title="Pausar" aria-label="Pausar" disabled>Ⅱ</button><button id="step-button" class="transport-button" title="Ejecutar un paso" aria-label="Ejecutar un paso">▸|</button><button id="stop-button" class="transport-button stop-button" title="Detener" aria-label="Detener" disabled>■</button></div><div class="run-hint"><span class="hint-indicator"></span><span id="run-hint">Añade bloques y dale vida a Karel</span><span class="shortcut-hint">F10 · paso a paso</span></div></div>
+      </section>
+      </section>
+      <section id="level-builder" class="level-builder" role="tabpanel" aria-labelledby="builder-tab-button" hidden>
+        <div class="builder-heading">
+          <div><div class="eyebrow"><span class="eyebrow-line coral"></span>LEVEL DESIGNER</div><h1>Crea tu nivel</h1><p class="level-description">Diseña el tablero y luego resuélvelo con tus bloques.</p></div>
+          <span class="builder-badge">KAREL STUDIO <span>✳</span></span>
+        </div>
+        <div class="builder-layout">
+          <form id="builder-form" class="builder-settings">
+            <label class="builder-field">NOMBRE DEL NIVEL<input id="custom-name" maxlength="42" required value="Mi primer nivel" /></label>
+            <label class="builder-field">OBJETIVO<textarea id="custom-description" rows="2" maxlength="120">Guía a Karel hasta la meta.</textarea></label>
+            <div class="builder-dimensions">
+              <label class="builder-field">COLUMNAS<input id="custom-width" type="number" min="5" max="12" value="8" /></label>
+              <label class="builder-field">FILAS<input id="custom-height" type="number" min="5" max="12" value="6" /></label>
+            </div>
+            <div class="builder-field">HERRAMIENTA</div>
+            <div class="builder-tools" role="toolbar" aria-label="Herramientas del editor de niveles">
+              <button type="button" class="builder-tool active" data-tool="start"><span>▲</span> Karel</button>
+              <button type="button" class="builder-tool" data-tool="goal"><span>✳</span> Meta</button>
+              <button type="button" class="builder-tool" data-tool="wall"><span>▰</span> Muro</button>
+              <button type="button" class="builder-tool" data-tool="marker"><span>●</span> Marcador</button>
+              <button type="button" class="builder-tool" data-tool="target"><span>◆</span> Objetivo</button>
+              <button type="button" class="builder-tool erase-tool" data-tool="erase"><span>⌫</span> Borrar</button>
+            </div>
+            <label class="builder-field direction-field">DIRECCIÓN<select id="builder-direction"><option value="1">Este →</option><option value="0">Norte ↑</option><option value="2">Sur ↓</option><option value="3">Oeste ←</option></select></label>
+            <label id="wall-direction-field" class="builder-field direction-field" hidden>LADO DEL MURO<select id="wall-direction"><option value="E">Este</option><option value="N">Norte</option><option value="S">Sur</option><option value="W">Oeste</option></select></label>
+            <div class="builder-actions"><button id="save-level-button" class="run-button" type="submit"><span class="run-glyph">＋</span>Guardar nivel y jugar</button><button id="reset-level-button" class="icon-button" type="button" aria-label="Vaciar diseño" title="Vaciar diseño">↻</button></div>
+            <div id="builder-feedback" class="feedback" role="status" aria-live="polite"><span class="feedback-mark">✦</span><span>Selecciona una herramienta y toca una casilla.</span></div>
+          </form>
+          <div class="builder-canvas">
+            <div class="board-topline"><span class="board-caption"><span class="live-dot"></span> VISTA PREVIA</span><span id="builder-size-label" class="coordinates">8 × 6</span></div>
+            <div id="builder-board" class="builder-board" role="grid" aria-label="Diseño del nivel"></div>
+            <div class="builder-key"><span><i class="legend-robot"></i>Inicio</span><span><i class="legend-goal">✳</i>Meta</span><span><i class="legend-marker"></i>Marcador</span><span><i class="legend-target"></i>Objetivo</span></div>
+          </div>
+        </div>
       </section>
     </main>
     <footer class="page-footer"><span>KAREL CLUB <span class="footer-dot">·</span> LABORATORIO 01</span><span>HECHO PARA APRENDER <span class="footer-spark">✳</span></span></footer>

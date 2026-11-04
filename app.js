@@ -23,6 +23,17 @@ const levels = [
   makeLevel('Laberinto en zigzag', 10, 8, { x: 1, y: 6, dir: 0, bag: 0 }, [8, 1], 'Sigue el camino en zigzag para llegar a la meta.', { '2,2': 1 }, {}, [...Array.from({ length: 4 }, (_, i) => [3, i * 2, 'E']), ...Array.from({ length: 3 }, (_, i) => [3 + i * 2, 4, 'S'])]),
   makeLevel('Múltiples caminos', 10, 7, { x: 1, y: 5, dir: 0, bag: 0 }, [7, 2], 'Encuentra el camino correcto entre múltiples opciones.', { '3,3': 1 }, {}, [...Array.from({ length: 5 }, (_, i) => [4, i + 1, 'E']), ...Array.from({ length: 5 }, (_, i) => i + 2).filter(x => x !== 5).map(x => [x, 2, 'S']), [6, 4, 'E']]),
 ];
+const CUSTOM_LEVELS_KEY = 'karel-club-custom-levels';
+function loadCustomLevels() {
+  try {
+    const records = JSON.parse(localStorage.getItem(CUSTOM_LEVELS_KEY) || '[]');
+    return Array.isArray(records) ? records.filter(level => level.name && level.start && Array.isArray(level.goal)).map(level =>
+      makeLevel(level.name, level.width, level.height, level.start, level.goal, level.description || '', level.markers || {}, level.targets || {}, level.walls || [])) : [];
+  } catch {
+    return [];
+  }
+}
+levels.push(...loadCustomLevels());
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const boardEl = $('#board');
@@ -30,7 +41,8 @@ const programEl = $('#program-list');
 const state = {
   levelIndex: 0, world: null, workspace: null, variables: new Map(), savedPrograms: new Map(),
   iterator: null, running: false, paused: false, activeId: null,
-  timer: null, completedLevels: new Set(),
+  timer: null, completedLevels: new Set(), builderTool: 'start',
+  builderDraft: { width: 8, height: 6, start: null, goal: null, markers: {}, targets: {}, walls: new Set() },
 };
 const currentLevel = () => levels[state.levelIndex];
 const keyAt = (x, y) => `${x},${y}`;
@@ -215,6 +227,7 @@ function initializeWorkspace() {
 }
 function initializeLevelSelector() {
   $('#level-select').innerHTML = levels.map((level, index) => `<option value="${index}">${String(index + 1).padStart(2, '0')} · ${level.name}</option>`).join('');
+  $('#progress-label').textContent = `0 / ${levels.length} niveles`;
 }
 function startLevel(index) {
   stopExecution(false);
@@ -231,9 +244,159 @@ function startLevel(index) {
   state.workspace.clearUndo();
   $('#level-select').value = String(index);
   $('#progress-label').textContent = `${state.completedLevels.size} / ${levels.length} niveles`;
-  announce(index === 0 ? '¡Tu próximo reto empieza aquí!' : `Nivel ${index} listo. ¡A programar!`);
+  announce(index === 0 ? '¡Tu próximo reto empieza aquí!' : `Nivel ${index + 1} listo. ¡A programar!`);
   setHint('Arrastra bloques al espacio y únelos');
   setWorld(); updateWorkspaceUI(); renderWorld();
+}
+function showBuilderMessage(message, kind = '') {
+  $('#builder-feedback').className = `feedback ${kind}`.trim();
+  $('#builder-feedback').querySelector('span:last-child').textContent = message;
+}
+function updateBuilderTool(tool) {
+  state.builderTool = tool;
+  document.querySelectorAll('.builder-tool').forEach(button => button.classList.toggle('active', button.dataset.tool === tool));
+  $('#wall-direction-field').hidden = tool !== 'wall';
+  $('.direction-field:not(#wall-direction-field)').hidden = tool !== 'start';
+}
+function toggleBuilderWall(x, y, direction) {
+  const vectors = { N: [0, -1, 'S'], E: [1, 0, 'W'], S: [0, 1, 'N'], W: [-1, 0, 'E'] };
+  const [dx, dy, opposite] = vectors[direction];
+  const edge = keyWall(x, y, direction);
+  const otherEdge = keyWall(x + dx, y + dy, opposite);
+  if (state.builderDraft.walls.has(edge)) {
+    state.builderDraft.walls.delete(edge); state.builderDraft.walls.delete(otherEdge);
+  } else {
+    state.builderDraft.walls.add(edge); state.builderDraft.walls.add(otherEdge);
+  }
+}
+function editBuilderCell(x, y) {
+  const draft = state.builderDraft;
+  const position = keyAt(x, y);
+  if (state.builderTool === 'start') draft.start = { x, y, dir: Number($('#builder-direction').value), bag: 0 };
+  else if (state.builderTool === 'goal') draft.goal = [x, y];
+  else if (state.builderTool === 'wall') toggleBuilderWall(x, y, $('#wall-direction').value);
+  else if (state.builderTool === 'marker') draft.markers[position] = (draft.markers[position] || 0) % 9 + 1;
+  else if (state.builderTool === 'target') draft.targets[position] = (draft.targets[position] || 0) % 9 + 1;
+  else {
+    delete draft.markers[position]; delete draft.targets[position];
+    if (draft.start?.x === x && draft.start?.y === y) draft.start = null;
+    if (draft.goal?.[0] === x && draft.goal?.[1] === y) draft.goal = null;
+    for (const direction of ['N', 'E', 'S', 'W']) {
+      const current = keyWall(x, y, direction);
+      const [dx, dy, opposite] = { N: [0, -1, 'S'], E: [1, 0, 'W'], S: [0, 1, 'N'], W: [-1, 0, 'E'] }[direction];
+      draft.walls.delete(current); draft.walls.delete(keyWall(x + dx, y + dy, opposite));
+    }
+  }
+  renderBuilder();
+}
+function renderBuilder() {
+  const draft = state.builderDraft;
+  const board = $('#builder-board');
+  board.style.setProperty('--cols', draft.width);
+  board.style.setProperty('--rows', draft.height);
+  board.style.setProperty('aspect-ratio', `${draft.width} / ${draft.height}`);
+  board.innerHTML = '';
+  for (let y = 0; y < draft.height; y++) {
+    for (let x = 0; x < draft.width; x++) {
+      const position = keyAt(x, y);
+      const cell = document.createElement('button');
+      cell.type = 'button'; cell.className = 'cell builder-cell'; cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-label', `Casilla ${x + 1}, ${y + 1}`);
+      if (draft.targets[position]) cell.classList.add('target');
+      if (draft.goal?.[0] === x && draft.goal?.[1] === y) cell.classList.add('goal-cell');
+      for (const [direction, name] of [['N', 'north'], ['E', 'east'], ['S', 'south'], ['W', 'west']]) {
+        if (draft.walls.has(keyWall(x, y, direction))) cell.classList.add(`wall-${name}`);
+      }
+      if (draft.start?.x === x && draft.start?.y === y) {
+        const start = document.createElement('span'); start.className = 'builder-start'; start.style.transform = `rotate(${draft.start.dir * 90}deg)`; start.textContent = '▲'; cell.append(start);
+      }
+      if (draft.goal?.[0] === x && draft.goal?.[1] === y) {
+        const goal = document.createElement('span'); goal.className = 'goal-star'; goal.textContent = '✳'; cell.append(goal);
+      }
+      if (draft.markers[position]) {
+        const marker = document.createElement('span'); marker.className = 'marker-token'; cell.append(marker);
+        if (draft.markers[position] > 1) { const amount = document.createElement('span'); amount.className = 'marker-count'; amount.textContent = draft.markers[position]; cell.append(amount); }
+      }
+      if (draft.targets[position]) {
+        const amount = document.createElement('span'); amount.className = 'target-count'; amount.textContent = draft.targets[position] > 1 ? draft.targets[position] : '◆'; cell.append(amount);
+      }
+      cell.addEventListener('click', () => editBuilderCell(x, y));
+      board.append(cell);
+    }
+  }
+  $('#builder-size-label').textContent = `${draft.width} × ${draft.height}`;
+}
+function resizeBuilder(axis, rawValue) {
+  const draft = state.builderDraft;
+  const value = Math.max(5, Math.min(12, Math.floor(Number(rawValue) || 8)));
+  draft[axis] = value;
+  $(`#custom-${axis}`).value = value;
+  if (draft.start && (draft.start.x >= draft.width || draft.start.y >= draft.height)) draft.start = null;
+  if (draft.goal && (draft.goal[0] >= draft.width || draft.goal[1] >= draft.height)) draft.goal = null;
+  const inside = position => { const [x, y] = position.split(',').map(Number); return x < draft.width && y < draft.height; };
+  for (const position of Object.keys(draft.markers)) if (!inside(position)) delete draft.markers[position];
+  for (const position of Object.keys(draft.targets)) if (!inside(position)) delete draft.targets[position];
+  for (const edge of [...draft.walls]) { const [x, y] = edge.split(','); if (Number(x) >= draft.width || Number(y) >= draft.height) draft.walls.delete(edge); }
+  renderBuilder();
+}
+function switchMode(mode) {
+  const isBuilder = mode === 'builder';
+  $('#play-tab-button').classList.toggle('active', !isBuilder);
+  $('#builder-tab-button').classList.toggle('active', isBuilder);
+  $('#play-tab-button').setAttribute('aria-selected', String(!isBuilder));
+  $('#builder-tab-button').setAttribute('aria-selected', String(isBuilder));
+  $('#play-mode').hidden = isBuilder;
+  $('#split-control').hidden = isBuilder;
+  $('#level-builder').hidden = !isBuilder;
+  if (!isBuilder) requestAnimationFrame(() => Blockly.svgResize(state.workspace));
+}
+function saveCustomLevel(event) {
+  event.preventDefault();
+  const draft = state.builderDraft;
+  const name = $('#custom-name').value.trim();
+  if (!name || !draft.start || !draft.goal) {
+    showBuilderMessage('Añade un nombre, coloca a Karel y marca la meta.', 'error'); return;
+  }
+  const description = $('#custom-description').value.trim() || 'Llega a la meta y completa los objetivos.';
+  const direction = Number($('#builder-direction').value);
+  const start = { ...draft.start, dir: direction, bag: 0 };
+  const goal = [...draft.goal];
+  const walls = [...draft.walls].map(edge => { const [x, y, side] = edge.split(','); return [Number(x), Number(y), side]; });
+  const record = { name, width: draft.width, height: draft.height, start, goal, description, markers: { ...draft.markers }, targets: { ...draft.targets }, walls };
+  const saved = [...levels.slice(6).map(level => ({ name: level.name, width: level.width, height: level.height, start: level.start, goal: level.goal, description: level.description, markers: level.markers, targets: level.targets, walls: [...level.walls].map(edge => { const [x, y, side] = edge.split(','); return [Number(x), Number(y), side]; }) })), record];
+  try { localStorage.setItem(CUSTOM_LEVELS_KEY, JSON.stringify(saved)); }
+  catch { showBuilderMessage('No se pudo guardar el nivel en este navegador.', 'error'); return; }
+  const newIndex = levels.length;
+  levels.push(makeLevel(record.name, record.width, record.height, record.start, record.goal, record.description, record.markers, record.targets, record.walls));
+  $('#level-select').add(new Option(`${String(newIndex + 1).padStart(2, '0')} · ${record.name}`, String(newIndex)));
+  state.builderDraft = { width: 8, height: 6, start: null, goal: null, markers: {}, targets: {}, walls: new Set() };
+  $('#custom-name').value = 'Mi primer nivel'; $('#custom-description').value = 'Guía a Karel hasta la meta.';
+  $('#custom-width').value = 8; $('#custom-height').value = 6; updateBuilderTool('start'); renderBuilder();
+  switchMode('play'); startLevel(newIndex);
+}
+function initializeBuilder() {
+  document.querySelectorAll('.builder-tool').forEach(button => button.addEventListener('click', () => updateBuilderTool(button.dataset.tool)));
+  $('#custom-width').addEventListener('change', event => resizeBuilder('width', event.target.value));
+  $('#custom-height').addEventListener('change', event => resizeBuilder('height', event.target.value));
+  $('#builder-form').addEventListener('submit', saveCustomLevel);
+  $('#reset-level-button').addEventListener('click', () => {
+    const { width, height } = state.builderDraft;
+    state.builderDraft = { width, height, start: null, goal: null, markers: {}, targets: {}, walls: new Set() };
+    renderBuilder(); showBuilderMessage('Diseño vaciado. Coloca a Karel y la meta.');
+  });
+  $('#play-tab-button').addEventListener('click', () => switchMode('play'));
+  $('#builder-tab-button').addEventListener('click', () => switchMode('builder'));
+  renderBuilder(); updateBuilderTool('start');
+}
+function initializeSplitSlider() {
+  const slider = $('#split-size');
+  const update = () => {
+    const mapShare = Number(slider.value);
+    $('.play-mode').style.gridTemplateColumns = `minmax(0, ${mapShare}fr) minmax(0, ${100 - mapShare}fr)`;
+    $('#split-value').textContent = `${mapShare} / ${100 - mapShare}`;
+    requestAnimationFrame(() => Blockly.svgResize(state.workspace));
+  };
+  slider.addEventListener('input', update); update();
 }
 function freeIn(direction) {
   const level = currentLevel(); const delta = DIRECTIONS[direction];
@@ -423,6 +586,8 @@ function stepOnce() {
 }
 initializeWorkspace();
 initializeLevelSelector();
+initializeBuilder();
+initializeSplitSlider();
 $('#level-select').addEventListener('change', event => startLevel(Number(event.target.value)));
 $('#undo-button').addEventListener('click', () => { if (!state.running) state.workspace.undo(false); });
 $('#redo-button').addEventListener('click', () => { if (!state.running) state.workspace.undo(true); });

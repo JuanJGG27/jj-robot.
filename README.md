@@ -2,7 +2,7 @@
 
 ## Versión web (sin Python)
 
-Abre [`index.html`](index.html) en un navegador moderno para jugar a Karel Club. La versión web está hecha con HTML, CSS y JavaScript, no necesita Python ni servidor. Requiere internet para cargar Blockly y las fuentes; incluye seis niveles, bloques de programación, bucles, condiciones y ejecución paso a paso.
+Abre [`index.html`](index.html) en un navegador moderno para jugar a Karel Club. La versión web está hecha con HTML, CSS y JavaScript, no necesita Python ni servidor. Requiere internet para cargar Blockly y las fuentes; incluye seis niveles, bloques de programación, bucles, condiciones, ejecución paso a paso y un editor para crear y guardar niveles personalizados. El control deslizante ajusta el espacio entre el mapa y el editor de bloques.
 
 ## Editor visual inspirado en Scratch
 
